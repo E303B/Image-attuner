@@ -24,7 +24,7 @@ def calculateClosest(ip, ap, x:int, y:int, seekRange:int, width:int, height:int,
             if i<0 or i>width-1: continue
             for j in range(y-seekRange, y+seekRange+1):
                 if j<0 or j>height-1: continue
-                if not round and getDistance(i-x, j-y)>seekRange: continue
+                if round and getDistance(i-x, j-y)>seekRange: continue
                 diff = getDifference(current_color, ap[i, j])
                 if diff<currentDiff: 
                     currentDiff=diff
@@ -110,12 +110,14 @@ def main():
         config = json.loads(file.read())
         file.close()
         
-    attunementPath = config["attunementFile"]
-    inputPath = config["input"]
-    outputPath = config["output"]
-    seekRange = config["seekRange"]
-    round = config["round"]
-    img = attune(inputPath, attunementPath, seekRange, round)
+    attunementPath = config.get("attunementFile")
+    inputPath = config.get("input")
+    outputPath = config.get("output")
+    seekRange = config.get("seekRange", 8)
+    round = config.get("round", True)
+    multithread = config.get("multithread", True)
+    num_threads = config.get("num_threads", 0)
+    img = attune(inputPath, attunementPath, seekRange, round, multithread, num_threads)
     if img is None:
         return
     img.save(outputPath)
