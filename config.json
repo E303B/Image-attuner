@@ -4,9 +4,6 @@
     "output": "./output.jpg",
     "seekRange":16,
     "round":true,
-    "method": "full",
-    "startX": 348,
-    "startY": 84,
-    "endX": 600,
-    "endY": 388
+    "precision":5.0,
+    "method": "full"
 }
