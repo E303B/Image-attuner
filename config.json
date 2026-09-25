@@ -2,5 +2,6 @@
     "attunementFile": "./attunement.jpg",
     "input": "./input.jpg",
     "output": "./output.jpg",
-    "seekRange":16
+    "seekRange":16,
+    "round":true
 }
