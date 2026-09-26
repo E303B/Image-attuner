@@ -11,6 +11,14 @@ def getDistance(dx:int, dy:int)->float:
     return (dx**2+dy**2)**0.5
 
 @cache
+def tweenColors(a, b, tween:float):
+    if tween<=0: return a
+    if tween>=1: return b
+    r1,g1,b1=a
+    r2,g2,b2=b
+    return (round(r1*tween+(1-tween)*r2), round(g1*tween+(1-tween)*g2), round(b1*tween+(1-tween)*b2))
+
+@cache
 def getDifference(c1, c2)->int:
     r1, g1, b1 = c1
     r2, g2, b2 = c2
@@ -62,13 +70,24 @@ def calculateArea(args):
         traceback.print_exc()
         return []
     
-def attuneBox(inputPath:str, attunementPath: str, startX:int, startY:int, endX:int, endY:int, seekRange:int=16, round:bool=False, multithread:bool=True, num_threads:int=0, fade:bool=False,precision:float=1)->Image.Image|None:
+def attuneBox(inputPath:str, attunementPath: str, startX:int, startY:int, endX:int, endY:int, seekRange:int=16, round:bool=False, multithread:bool=True, num_threads:int=0, fade:float=0, fsx:int=-1, fsy:int=-1,precision:float=1)->Image.Image|None:
     input = Image.open(inputPath).convert("RGB")
     attunement = Image.open(attunementPath).convert("RGB")
     target_size = input.size
     attunement = attunement.resize(target_size, Image.Resampling.LANCZOS)
     width, height = target_size
     if startX>endX or startY>endY: return None
+    fadeCenterX=(endX+startX)/2 if fsx==-1 else fsx
+    fadeCenterY=(endY+startY)/2 if fsy==-1 else fsy
+    fmdc=[]
+    fmdc.append(((endX-fadeCenterX)**2+(endY-fadeCenterY)**2)**0.5)
+    fmdc.append(((endX-fadeCenterX)**2+(startY-fadeCenterY)**2)**0.5)
+    fmdc.append(((startX-fadeCenterX)**2+(endY-fadeCenterY)**2)**0.5)
+    fmdc.append(((startX-fadeCenterX)**2+(startY-fadeCenterY)**2)**0.5)
+    fadeMaxDistance=-1
+    for candidate in fmdc:
+        if fadeMaxDistance<candidate:
+            fadeMaxDistance=candidate
     if multithread:
         num_cores = (os.cpu_count() or 4) if num_threads<1 else num_threads
         print(num_cores)
@@ -89,7 +108,14 @@ def attuneBox(inputPath:str, attunementPath: str, startX:int, startY:int, endX:i
             compressed.extend(result) # type: ignore
         for x in range(startX, endX):
             for y in range(startY, endY):
-                fpixels[x,y]=compressed[(x-startX)*(endY-startY)+(y-startY)]
+                c=compressed[(x-startX)*(endY-startY)+(y-startY)]
+                if fade==1:
+                    fpixels[x, y]=c
+                    continue
+                distance=((x-fadeCenterX)**2+(y-fadeCenterY)**2)**0.5
+                cur=fpixels[x,y]
+                p=(distance-fadeMaxDistance*fade)/(fadeMaxDistance*(1-fade))
+                fpixels[x,y]=tweenColors(cur, c, p)
         input.close()
         attunement.close()
         return final_img
@@ -107,7 +133,14 @@ def attuneBox(inputPath:str, attunementPath: str, startX:int, startY:int, endX:i
             return None
         for x in range(startX, endX):
             for y in range(startY, endY):
-                fpixels[x,y]=calculateClosest(ip, ap, x, y, seekRange, width, height, round, precision)
+                c=calculateClosest(ip, ap, x, y, seekRange, width, height, round, precision)
+                if fade==1:
+                    fpixels[x, y]=c
+                    continue
+                distance=((x-fadeCenterX)**2+(y-fadeCenterY)**2)**0.5
+                cur=fpixels[x,y]
+                p=(distance-fadeMaxDistance*fade)/(fadeMaxDistance*(1-fade))
+                fpixels[x,y]=tweenColors(cur, c, p)
         return final_img
     
 def attune(inputPath:str, attunementPath: str, seekRange:int=16, round:bool=False, multithread:bool=True, num_threads:int=0, precision:float=1)->Image.Image|None:
@@ -179,7 +212,10 @@ def main():
         startY=config.get("startY", 0)
         endX=config.get("endX", 0)
         endY=config.get("endY", 0)
-        img = attuneBox(inputPath, attunementPath, startX, startY, endX, endY, seekRange, round, multithread, num_threads, precision)
+        fade=config.get("fade", 1)
+        fadeCenterX=config.get("fadeCenterX", -1)
+        fadeCenterY=config.get("fadeCenterY", -1)
+        img = attuneBox(inputPath, attunementPath, startX, startY, endX, endY, seekRange, round, multithread, num_threads, fade, fadeCenterX, fadeCenterY, precision)
     else:
         img = Image.open(inputPath)
     if img is None:
