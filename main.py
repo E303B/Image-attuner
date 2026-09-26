@@ -70,6 +70,88 @@ def calculateArea(args):
         traceback.print_exc()
         return []
     
+def attuneCircle(inputPath:str, attunementPath: str, centerX:int, centerY:int, radius:int, seekRange:int=16, round:bool=False, multithread:bool=True, num_threads:int=0, fade:float=0, fsx:int=-1, fsy:int=-1,precision:float=1)->Image.Image|None:
+    input = Image.open(inputPath).convert("RGB")
+    attunement = Image.open(attunementPath).convert("RGB")
+    target_size = input.size
+    attunement = attunement.resize(target_size, Image.Resampling.LANCZOS)
+    width, height = target_size
+    startX=centerX-radius
+    startY=centerY-radius
+    endX=centerX+radius
+    endY=centerY+radius
+    fadeCenterX=(endX+startX)/2 if fsx==-1 else fsx
+    fadeCenterY=(endY+startY)/2 if fsy==-1 else fsy
+    fmdc=[]
+    fmdc.append(((endX-fadeCenterX)**2+(endY-fadeCenterY)**2)**0.5)
+    fmdc.append(((endX-fadeCenterX)**2+(startY-fadeCenterY)**2)**0.5)
+    fmdc.append(((startX-fadeCenterX)**2+(endY-fadeCenterY)**2)**0.5)
+    fmdc.append(((startX-fadeCenterX)**2+(startY-fadeCenterY)**2)**0.5)
+    fadeMaxDistance=-1
+    for candidate in fmdc:
+        if fadeMaxDistance<candidate:
+            fadeMaxDistance=candidate
+    if multithread:
+        num_cores = (os.cpu_count() or 4) if num_threads<1 else num_threads
+        print(num_cores)
+        tasks = []
+        chunk_size = int(math.ceil((endX-startX+1)/num_cores))
+        for i in range(num_cores):
+            s=max(i*chunk_size, 0)+startX
+            e=min((i+1)*chunk_size, (endX-startX))+startX
+            tasks.append((inputPath, attunementPath, s, e, startY, endY, seekRange, round, precision))
+        with ProcessPoolExecutor(max_workers=num_cores) as executor:
+            results = list(executor.map(calculateArea, tasks))
+        final_img = input.copy()
+        fpixels=final_img.load()
+        if fpixels is None:
+            return None
+        compressed=[]
+        for result in results:
+            compressed.extend(result) # type: ignore
+        for x in range(startX, endX):
+            for y in range(startY, endY):
+                d=((x-centerX)**2+(y-centerY)**2)**0.5
+                if d>radius:
+                    continue
+                c=compressed[(x-startX)*(endY-startY)+(y-startY)]
+                if fade==1:
+                    fpixels[x, y]=c
+                    continue
+                distance=((x-fadeCenterX)**2+(y-fadeCenterY)**2)**0.5
+                cur=fpixels[x,y]
+                p=(distance-fadeMaxDistance*fade)/(fadeMaxDistance*(1-fade))
+                fpixels[x,y]=tweenColors(cur, c, p)
+        input.close()
+        attunement.close()
+        return final_img
+    else:
+        width, height = target_size
+        final_img = input.copy()
+        fpixels=final_img.load()
+        if fpixels is None:
+            return None
+        ip=input.load()
+        if ip is None:
+            return None
+        ap=attunement.load()
+        if ap is None:
+            return None
+        for x in range(startX, endX):
+            for y in range(startY, endY):
+                d=((x-centerX)**2+(y-centerY)**2)**0.5
+                if d>radius:
+                    continue
+                c=calculateClosest(ip, ap, x, y, seekRange, width, height, round, precision)
+                if fade==1:
+                    fpixels[x, y]=c
+                    continue
+                distance=((x-fadeCenterX)**2+(y-fadeCenterY)**2)**0.5
+                cur=fpixels[x,y]
+                p=(distance-fadeMaxDistance*fade)/(fadeMaxDistance*(1-fade))
+                fpixels[x,y]=tweenColors(cur, c, p)
+        return final_img
+
 def attuneBox(inputPath:str, attunementPath: str, startX:int, startY:int, endX:int, endY:int, seekRange:int=16, round:bool=False, multithread:bool=True, num_threads:int=0, fade:float=0, fsx:int=-1, fsy:int=-1,precision:float=1)->Image.Image|None:
     input = Image.open(inputPath).convert("RGB")
     attunement = Image.open(attunementPath).convert("RGB")
@@ -95,7 +177,7 @@ def attuneBox(inputPath:str, attunementPath: str, startX:int, startY:int, endX:i
         chunk_size = int(math.ceil((endX-startX+1)/num_cores))
         for i in range(num_cores):
             s=max(i*chunk_size, 0)+startX
-            e=min((i+1)*chunk_size, (endX-startX+1))+startX
+            e=min((i+1)*chunk_size, (endX-startX))+startX
             tasks.append((inputPath, attunementPath, s, e, startY, endY, seekRange, round, precision))
         with ProcessPoolExecutor(max_workers=num_cores) as executor:
             results = list(executor.map(calculateArea, tasks))
@@ -216,6 +298,14 @@ def main():
         fadeCenterX=config.get("fadeCenterX", -1)
         fadeCenterY=config.get("fadeCenterY", -1)
         img = attuneBox(inputPath, attunementPath, startX, startY, endX, endY, seekRange, round, multithread, num_threads, fade, fadeCenterX, fadeCenterY, precision)
+    elif method=="circle":
+        centerX=config.get("centerX", 0)
+        centerY=config.get("centerY", 0)
+        radius=config.get("radius", 0)
+        fade=config.get("fade", 1)
+        fadeCenterX=config.get("fadeCenterX", -1)
+        fadeCenterY=config.get("fadeCenterY", -1)
+        img = attuneCircle(inputPath, attunementPath, centerX, centerY, radius, seekRange, round, multithread, num_threads, fade, fadeCenterX, fadeCenterY, precision)
     else:
         img = Image.open(inputPath)
     if img is None:
